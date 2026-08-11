@@ -1,0 +1,45 @@
+\documentclass{article}
+\usepackage{amsthm}
+\usepackage{amsmath}
+
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}[proposition]{Corollary}
+\newtheorem{claim}{Claim}[subsection]
+\numberwithin{equation}{section}
+
+\begin{document}
+
+\section{One}\label{sec:one}
+\begin{proposition}\label{prop:one}
+Global counter one.
+\end{proposition}
+\begin{corollary}\label{cor:one}
+Shared global counter two.
+\end{corollary}
+
+\subsection{One one}\label{subsec:one-one}
+\begin{claim}\label{claim:one-one}
+Subsection counter one.
+\end{claim}
+\begin{equation}\label{eq:one}
+  1 = 1
+\end{equation}
+
+\subsection{One two}\label{subsec:one-two}
+\begin{claim}\label{claim:one-two}
+Subsection counter resets.
+\end{claim}
+
+\section{Two}\label{sec:two}
+\begin{proposition}\label{prop:two}
+Global counter continues.
+\end{proposition}
+\subsection{Two one}\label{subsec:two-one}
+\begin{claim}\label{claim:two-one}
+Subsection prefix uses the new section.
+\end{claim}
+\begin{equation}\label{eq:two}
+  2 = 2
+\end{equation}
+
+\end{document}

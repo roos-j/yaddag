@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render an NCT dependency-graph JSON document as standalone interactive HTML.
+"""Render a YADDAG dependency-graph JSON document as standalone interactive HTML.
 
 The renderer consumes only the JSON interchange file.  It computes independent
 node layouts for each hierarchy mode (none, section, subsection) and for both
@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-SCHEMA_NAME = "nct-dependency-graph"
+SCHEMA_NAME = "yaddag-dependency-graph"
 SCHEMA_VERSION = "2.0.0"
 SVG_NS = "http://www.w3.org/2000/svg"
 ET.register_namespace("", SVG_NS)
@@ -971,7 +971,7 @@ def build_html(graph: dict[str, Any], layouts: dict[str, LayoutGeometry], mathja
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NCT blueprint dependency graph</title>
+<title>YADDAG dependency graph</title>
 <style>
 :root {
   --private-opacity: $private_opacity;
@@ -1133,7 +1133,7 @@ window.MathJax = {
 </head>
 <body>
 <header id="toolbar">
-  <div class="brand"><h1>NCT dependency graph</h1><p>$source_name</p></div>
+  <div class="brand"><h1>YADDAG dependency graph</h1><p>$source_name</p></div>
   <div class="search-wrap">
     <div class="search-input-wrap">
       <input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Search labels, titles, statements, or Lean names…" aria-label="Search graph nodes">
@@ -1623,7 +1623,7 @@ window.MathJax = {
 
   function exportSvg() {
     const source = `<?xml version="1.0" encoding="UTF-8"?>\n${exportClone()}`;
-    downloadBlob(new Blob([source], {type: 'image/svg+xml;charset=utf-8'}), 'nct-dependency-current-view.svg');
+    downloadBlob(new Blob([source], {type: 'image/svg+xml;charset=utf-8'}), 'yaddag-dependency-current-view.svg');
   }
 
   function exportPng() {
@@ -1641,7 +1641,7 @@ window.MathJax = {
       context.setTransform(scale, 0, 0, scale, 0, 0);
       context.drawImage(image, 0, 0, rect.width, rect.height);
       canvas.toBlob(blob => {
-        if (blob) downloadBlob(blob, 'nct-dependency-current-view.png');
+        if (blob) downloadBlob(blob, 'yaddag-dependency-current-view.png');
         URL.revokeObjectURL(url);
       }, 'image/png');
     };
@@ -1712,9 +1712,9 @@ window.MathJax = {
     const anchor = event.target.closest('a');
     if (!anchor) return;
     const href = anchor.getAttribute('href') || '';
-    if (href.startsWith('nct-node:')) {
+    if (href.startsWith('yaddag-node:')) {
       event.preventDefault();
-      selectNode(decodeURIComponent(href.slice('nct-node:'.length)), true);
+      selectNode(decodeURIComponent(href.slice('yaddag-node:'.length)), true);
     }
   });
 

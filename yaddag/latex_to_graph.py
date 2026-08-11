@@ -3,10 +3,10 @@
 
 The extractor reads theorem-like environments, definitions, section hierarchy,
 legacy ``\\using`` annotations, typed ``\\uses``/``\\usesdefs`` annotations,
-and Lean metadata supplied by ``\\lean`` and ``\\leanok``.  It also compiles the
-source (unless an auxiliary file is supplied) so that every ``\\ref`` and
-``\\eqref`` appearing in a statement is resolved to the exact number produced by
-LaTeX.  User-defined macros are expanded before statement data is written to JSON.
+and Lean metadata supplied by ``\\lean`` and ``\\leanok``.  It models the
+source's section and theorem counters locally so that every ``\\ref`` and
+``\\eqref`` appearing in a statement is resolved without a LaTeX installation.
+User-defined macros are expanded before statement data is written to JSON.
 
 Metadata is validated conservatively.  An invalid dependency, Lean name entry, or
 status annotation is omitted while parsing continues.  Every omission is reported
@@ -21,10 +21,7 @@ import hashlib
 import html
 import json
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
 import urllib.parse
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
@@ -32,10 +29,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-SCHEMA_NAME = "nct-dependency-graph"
+try:
+    from .latex_to_label_numbers import build_label_numbers_from_file
+except ImportError:  # pragma: no cover - supports direct execution from a checkout
+    from latex_to_label_numbers import build_label_numbers_from_file
+
+SCHEMA_NAME = "yaddag-dependency-graph"
 SCHEMA_VERSION = "2.0.0"
-PARSER_NAME = "latex_to_graph_json"
-PARSER_VERSION = "2.1.1"
+PARSER_NAME = "latex_to_graph"
+PARSER_VERSION = "2.2.0"
 
 THEOREM_ENVIRONMENTS = {
     "theorem",
@@ -957,93 +959,28 @@ def expand_custom_macros(text: str, macros: dict[str, MacroDefinition], max_pass
 
 
 # ---------------------------------------------------------------------------
-# LaTeX reference numbers
+# Local reference numbers
 # ---------------------------------------------------------------------------
 
-def parse_aux_labels(aux_text: str) -> dict[str, dict[str, str]]:
-    catalog: dict[str, dict[str, str]] = {}
-    i = 0
-    marker = "\\newlabel"
-    while True:
-        index = aux_text.find(marker, i)
-        if index < 0:
-            break
-        pos = skip_space(aux_text, index + len(marker))
-        try:
-            label, pos = read_balanced(aux_text, pos)
-            pos = skip_space(aux_text, pos)
-            payload, pos = read_balanced(aux_text, pos)
-        except ValueError:
-            i = index + len(marker)
-            continue
-        fields: list[str] = []
-        p = 0
-        while len(fields) < 5:
-            p = skip_space(payload, p)
-            if p >= len(payload) or payload[p] != "{":
-                break
-            try:
-                value, p = read_balanced(payload, p)
-            except ValueError:
-                break
-            fields.append(value)
-        fields.extend([""] * (5 - len(fields)))
-        number_raw, page_raw, title_raw, anchor_raw, extra_raw = fields[:5]
-        catalog[label] = {
-            "number": latex_to_plain(number_raw) or number_raw.strip(),
-            "number_latex": number_raw.strip(),
-            "page": latex_to_plain(page_raw) or page_raw.strip(),
-            "title": latex_to_plain(title_raw),
-            "anchor": anchor_raw.strip(),
-            "extra": extra_raw.strip(),
+def build_reference_catalog(latex_path: Path) -> tuple[dict[str, dict[str, str]], dict[str, Any]]:
+    """Create reference data from the local section and theorem counter model."""
+    label_numbers = build_label_numbers_from_file(latex_path)
+    catalog = {
+        label: {
+            "number": number,
+            "number_latex": number,
+            "page": "",
+            "title": "",
+            "anchor": "",
+            "extra": "",
         }
-        i = pos
-    return catalog
-
-
-def compile_or_read_aux(latex_path: Path, aux_file: Path | None, latexmk_binary: str) -> tuple[dict[str, dict[str, str]], dict[str, Any]]:
-    if aux_file is not None:
-        if not aux_file.is_file():
-            raise FileNotFoundError(f"auxiliary file not found: {aux_file}")
-        text = aux_file.read_text(encoding="utf-8", errors="replace")
-        catalog = parse_aux_labels(text)
-        return catalog, {"mode": "supplied_aux", "succeeded": True, "aux_file": aux_file.name, "labels_total": len(catalog), "log_tail": ""}
-
-    executable = shutil.which(latexmk_binary)
-    if executable is None:
-        return {}, {"mode": "compile", "succeeded": False, "aux_file": None, "labels_total": 0, "log_tail": f"{latexmk_binary!r} was not found"}
-    with tempfile.TemporaryDirectory(prefix="nct-graph-latex-") as temporary:
-        outdir = Path(temporary)
-        command = [
-            executable,
-            "-pdf",
-            "-interaction=nonstopmode",
-            "-halt-on-error",
-            f"-outdir={outdir}",
-            str(latex_path.resolve()),
-        ]
-        process = subprocess.run(command, cwd=latex_path.parent, text=True, encoding="utf-8", errors="replace", capture_output=True, check=False)
-        aux_path = outdir / f"{latex_path.stem}.aux"
-        if not aux_path.is_file():
-            # latexmk may normalize a path-like job name to the final basename.
-            candidates = sorted(outdir.glob("*.aux"))
-            aux_path = candidates[0] if candidates else aux_path
-        succeeded = process.returncode == 0 and aux_path.is_file()
-        log = (process.stdout + "\n" + process.stderr).strip().splitlines()
-        catalog = parse_aux_labels(aux_path.read_text(encoding="utf-8", errors="replace")) if aux_path.is_file() else {}
-        metadata: dict[str, Any] = {
-            "mode": "compile",
-            "engine": Path(executable).name,
-            "succeeded": succeeded,
-            "aux_file": aux_path.name if aux_path.is_file() else None,
-            "labels_total": len(catalog),
-            "return_code": process.returncode,
-        }
-        # Keep successful output deterministic: temporary directory paths from
-        # latexmk are useful only when compilation fails.
-        if not succeeded:
-            metadata["log_tail"] = "\n".join(log[-40:])
-        return catalog, metadata
+        for label, number in label_numbers.items()
+    }
+    metadata: dict[str, Any] = {
+        "mode": "local_counter",
+        "labels_total": len(catalog),
+    }
+    return catalog, metadata
 
 
 # ---------------------------------------------------------------------------
@@ -1080,7 +1017,7 @@ class StatementConverter:
             "target_node_id": target,
         })
         if target:
-            destination = "nct-node:" + urllib.parse.quote(target, safe="")
+            destination = "yaddag-node:" + urllib.parse.quote(target, safe="")
             if math_mode:
                 safe_display = display.replace("\\", "").replace("{", "").replace("}", "")
                 return f"\\href{{{destination}}}{{{safe_display}}}"
@@ -1119,7 +1056,7 @@ class StatementConverter:
                     else:
                         body = self.replace_math_commands(body)
                         if label.strip() in self.node_ids:
-                            destination = "nct-node:" + urllib.parse.quote(label.strip(), safe="")
+                            destination = "yaddag-node:" + urllib.parse.quote(label.strip(), safe="")
                             output.append(f"\\href{{{destination}}}{{{body}}}")
                         else:
                             output.append(body)
@@ -1204,7 +1141,7 @@ class StatementConverter:
                     else:
                         body_html = self.text_fragment(body)
                         if label.strip() in self.node_ids:
-                            destination = "nct-node:" + urllib.parse.quote(label.strip(), safe="")
+                            destination = "yaddag-node:" + urllib.parse.quote(label.strip(), safe="")
                             output.append(f'<a class="statement-ref" href="{html.escape(destination, quote=True)}" data-node-id="{html.escape(label.strip(), quote=True)}">{body_html}</a>')
                         else:
                             output.append(body_html)
@@ -1694,8 +1631,6 @@ def build_graph(
     granularity: str,
     include_definitions: bool,
     default_status: str,
-    aux_file: Path | None,
-    latexmk_binary: str,
 ) -> dict[str, Any]:
     original = latex_path.read_text(encoding="utf-8")
     masked = strip_comments_preserve_layout(original)
@@ -1704,7 +1639,7 @@ def build_graph(
     body_start = document_match.end() if document_match else 0
     semantic_text = mask_command_arguments_preserve_layout(masked, AUTHOR_ANNOTATION_COMMANDS, body_start)
 
-    reference_catalog, reference_build = compile_or_read_aux(latex_path, aux_file, latexmk_binary)
+    reference_catalog, reference_build = build_reference_catalog(latex_path)
     macros = parse_macro_definitions(masked, line_starts)
     headings, heading_diagnostics = parse_headings(semantic_text, body_start, line_starts)
     # Prefer LaTeX's own numbering where a heading has a label.
@@ -1960,8 +1895,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--granularity", choices=("none", "section", "subsection"), default="subsection", help="default hierarchy view")
     parser.add_argument("--include-definitions", action=argparse.BooleanOptionalAction, default=False, help="default visibility of definition nodes")
     parser.add_argument("--status", choices=sorted(STATUS_IDS), default="can_state", help="initial status assigned to every extracted node")
-    parser.add_argument("--aux-file", type=Path, help="use an existing .aux file instead of compiling the LaTeX source")
-    parser.add_argument("--latexmk-binary", default="latexmk", help="latexmk executable used to obtain reference numbers")
     parser.add_argument("--strict", action="store_true", help="exit nonzero on structural, dependency, numbering, or macro-expansion diagnostics")
     return parser.parse_args(argv)
 
@@ -1977,8 +1910,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             granularity=args.granularity,
             include_definitions=args.include_definitions,
             default_status=args.status,
-            aux_file=args.aux_file,
-            latexmk_binary=args.latexmk_binary,
         )
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -2002,7 +1933,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         or diagnostics["missing_reference_numbers"]
         or diagnostics["statement_unexpanded_macros"]
         or metadata_diagnostics
-        or not graph["source"]["reference_numbering"].get("succeeded")
     )
     stats = graph["statistics"]
     print(

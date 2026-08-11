@@ -1,0 +1,40 @@
+\documentclass{article}
+\usepackage{amsthm}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{definition}{Definition}[section]
+
+\begin{document}
+
+\section{First section}\label{sec:first}
+
+\begin{theorem}\label{thm:first}
+First theorem.
+\end{theorem}
+
+\begin{lemma}\label{lem:first}
+Shared theorem counter.
+\end{lemma}
+
+\begin{definition}\label{def:first}
+Independent definition counter.
+\end{definition}
+
+\subsection{First subsection}\label{subsec:first}
+
+\begin{theorem}\label{thm:after-subsection}
+The section-based theorem counter does not reset here.
+\end{theorem}
+
+\section{Second section}\label{sec:second}
+
+\begin{lemma}\label{lem:second}
+The shared counter resets with the section.
+\end{lemma}
+
+\begin{definition}\label{def:second}
+The definition counter also resets with the section.
+\end{definition}
+
+\end{document}

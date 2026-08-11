@@ -1,4 +1,4 @@
-# NCT dependency graph JSON format 2.0.0
+# YADDAG dependency graph JSON format 2.0.0
 
 `graph.json` is the only interchange document between the LaTeX extractor and the HTML renderer. The renderer does not read the LaTeX source.
 
@@ -8,7 +8,7 @@ The normative machine-readable definition is [`graph.schema.json`](graph.schema.
 
 ```json
 {
-  "schema": "nct-dependency-graph",
+  "schema": "yaddag-dependency-graph",
   "schema_version": "2.0.0",
   "source": {},
   "settings": {},
@@ -25,7 +25,7 @@ The normative machine-readable definition is [`graph.schema.json`](graph.schema.
 
 ## Source and reference numbering
 
-`source` records the input file name and SHA-256 hash, extractor version, generation time, and the mechanism used to obtain LaTeX reference numbers.
+`source` records the input file name and SHA-256 hash, extractor version, generation time, and the local counter mechanism used to assign reference numbers.
 
 ```json
 {
@@ -33,29 +33,25 @@ The normative machine-readable definition is [`graph.schema.json`](graph.schema.
   "sha256": "…",
   "generated_at": "2026-08-10T00:00:00+00:00",
   "parser": {
-    "name": "latex_to_graph_json",
+    "name": "latex_to_graph",
     "version": "2.0.0"
   },
   "reference_numbering": {
-    "mode": "compile",
-    "engine": "latexmk",
-    "succeeded": true,
-    "aux_file": "blueprint.aux",
-    "labels_total": 751,
-    "return_code": 0
+    "mode": "local_counter",
+    "labels_total": 751
   }
 }
 ```
 
-Unless `--aux-file` is supplied, the extractor runs `latexmk`, reads the generated `.aux` file, and stores every `\newlabel` entry in `reference_catalog`. A catalog entry has:
+The extractor models standard section counters plus basic `\newtheorem` declarations and stores the resulting label numbers in `reference_catalog`. Page, title, anchor, and extra fields are empty because no LaTeX compilation occurs. A catalog entry has:
 
 ```json
 {
   "number": "4.17",
   "number_latex": "4.17",
-  "page": "31",
-  "title": "Displayed title",
-  "anchor": "theorem.4.17",
+  "page": "",
+  "title": "",
+  "anchor": "",
   "extra": "",
   "node_id": "lem:example"
 }
@@ -163,9 +159,9 @@ Every other node is `private`, including an unused node. The entire rendered nod
 
 `statement_latex` contains the theorem or definition body after recursively expanding project macros declared through supported `\newcommand`, `\renewcommand`, `\providecommand`, `\def`, and `\DeclareMathOperator` declarations. Graph metadata commands, labels, and author annotations are omitted.
 
-`statement_html` is a presentation form for the detail panel. Mathematical fragments remain as `\(...\)` and `\[...\]` for MathJax. Every `\ref` and `\eqref` is replaced by the number read from the compiled `.aux` file:
+`statement_html` is a presentation form for the detail panel. Mathematical fragments remain as `\(...\)` and `\[...\]` for MathJax. Every `\ref` and `\eqref` is replaced by the number from the local counter model:
 
-- when the target is a graph node, the number is an `nct-node:` link;
+- when the target is a graph node, the number is a `yaddag-node:` link;
 - otherwise the same generated number appears as ordinary unlinked text.
 
 A statement reference entry is:
@@ -223,4 +219,4 @@ All nodes extracted from the supplied manuscript currently have status `can_stat
 
 ## Diagnostics and strict mode
 
-The extractor records duplicate or missing node labels, unresolved dependencies, duplicate edges, cycles, missing reference numbers, and unexpanded custom statement macros. With `--strict`, any such condition—or a failed LaTeX numbering build—causes a nonzero exit status after the JSON has been written for inspection.
+The extractor records duplicate or missing node labels, unresolved dependencies, duplicate edges, cycles, missing reference numbers, and unexpanded custom statement macros. With `--strict`, any such condition causes a nonzero exit status after the JSON has been written for inspection.

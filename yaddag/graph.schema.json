@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/schemas/nct-dependency-graph-2.0.0.schema.json",
-  "title": "NCT dependency graph interchange format",
+  "$id": "https://example.invalid/schemas/yaddag-dependency-graph-2.0.0.schema.json",
+  "title": "YADDAG dependency graph interchange format",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -20,7 +20,7 @@
   ],
   "properties": {
     "schema": {
-      "const": "nct-dependency-graph"
+      "const": "yaddag-dependency-graph"
     },
     "schema_version": {
       "const": "2.0.0"
@@ -271,39 +271,17 @@
           "additionalProperties": false,
           "required": [
             "mode",
-            "succeeded",
-            "aux_file",
             "labels_total"
           ],
           "properties": {
             "mode": {
               "enum": [
-                "compile",
-                "supplied_aux"
-              ]
-            },
-            "engine": {
-              "type": "string",
-              "minLength": 1
-            },
-            "succeeded": {
-              "type": "boolean"
-            },
-            "aux_file": {
-              "type": [
-                "string",
-                "null"
+                "local_counter"
               ]
             },
             "labels_total": {
               "type": "integer",
               "minimum": 0
-            },
-            "return_code": {
-              "type": "integer"
-            },
-            "log_tail": {
-              "type": "string"
             }
           }
         }

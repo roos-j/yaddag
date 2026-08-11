@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yaddag"
+version = "0.1.0"
+description = "Create explorable dependency graphs from LaTeX blueprints."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Mathematics",
+]
+keywords = ["latex", "dependency-graph", "dag", "mathematics"]
+
+[project.scripts]
+yaddag-extract = "yaddag.latex_to_graph:main"
+yaddag-number-labels = "yaddag.latex_to_label_numbers:main"
+yaddag-render = "yaddag.graph_to_html:main"
+
+[tool.setuptools]
+packages = ["yaddag"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+yaddag = ["graph.schema.json", "GRAPH_FORMAT.md"]

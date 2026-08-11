@@ -1,0 +1,156 @@
+name: Render dependency graph
+
+on:
+  workflow_dispatch:
+    inputs:
+      tex_file:
+        description: Repository-relative LaTeX source file to render
+        required: true
+        type: string
+      html_file:
+        description: Repository-relative HTML output path
+        required: true
+        default: dependency-graph.html
+        type: string
+      strict:
+        description: Fail when the extractor reports graph validation diagnostics
+        required: false
+        default: true
+        type: boolean
+  workflow_call:
+    inputs:
+      tex_file:
+        description: Repository-relative LaTeX source file to render
+        required: true
+        type: string
+      yaddag_repository:
+        description: Public YADDAG repository in owner/repository form
+        required: true
+        type: string
+      yaddag_ref:
+        description: Immutable YADDAG release tag or commit SHA
+        required: false
+        default: main
+        type: string
+      html_file:
+        description: Repository-relative HTML output path
+        required: false
+        default: dependency-graph.html
+        type: string
+      strict:
+        description: Fail when the extractor reports graph validation diagnostics
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      yaddag_read_token:
+        description: Optional token with read access when yaddag_repository is private
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    env:
+      TEX_FILE: ${{ inputs.tex_file }}
+      HTML_FILE: ${{ inputs.html_file }}
+      STRICT: ${{ inputs.strict }}
+      MATHJAX_ROOT: ${{ runner.temp }}/yaddag-mathjax
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out YADDAG package
+        if: github.event_name == 'workflow_call'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.yaddag_repository }}
+          ref: ${{ inputs.yaddag_ref }}
+          path: .yaddag-package
+          token: ${{ secrets.yaddag_read_token || github.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Graphviz and Node.js
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes graphviz nodejs npm
+
+      - name: Install MathJax 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$MATHJAX_ROOT" mathjax-full@3
+          test -f "$MATHJAX_ROOT/node_modules/mathjax-full/es5/tex-svg-full.js"
+
+      - name: Install YADDAG
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_call" ]]; then
+            python -m pip install .yaddag-package
+          else
+            python -m pip install .
+          fi
+
+      - name: Render and archive the dependency graph
+        id: render
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workspace_path="$(realpath "$GITHUB_WORKSPACE")"
+          tex_path="$(realpath --canonicalize-existing "$TEX_FILE")"
+          html_path="$(realpath --canonicalize-missing "$HTML_FILE")"
+
+          case "$tex_path" in
+            "$workspace_path"/*) ;;
+            *) echo "tex_file must be inside the repository: $TEX_FILE" >&2; exit 2 ;;
+          esac
+          case "$html_path" in
+            "$workspace_path"/*) ;;
+            *) echo "html_file must be inside the repository: $HTML_FILE" >&2; exit 2 ;;
+          esac
+
+          mkdir -p "$(dirname "$html_path")"
+          graph_path="$RUNNER_TEMP/graph.json"
+          extractor_args=()
+          if [[ "$STRICT" == "true" ]]; then
+            extractor_args+=(--strict)
+          fi
+
+          yaddag-extract "$tex_path" "$graph_path" "${extractor_args[@]}"
+          yaddag-render "$graph_path" "$html_path" \
+            --mathjax-js "$MATHJAX_ROOT/node_modules/mathjax-full/es5/tex-svg-full.js"
+
+          timestamp="$(date -u +'%Y%m%dT%H%M%SZ')"
+          html_directory="$(dirname "$html_path")"
+          html_filename="$(basename "$html_path")"
+          html_stem="${html_filename%.html}"
+          if [[ "$html_stem" == "$html_filename" ]]; then
+            echo "html_file must end in .html: $HTML_FILE" >&2
+            exit 2
+          fi
+          archived_html_path="$html_directory/${html_stem}-${timestamp}.html"
+          cp "$html_path" "$archived_html_path"
+
+          echo "html_path=$html_path" >> "$GITHUB_OUTPUT"
+          echo "archived_html_path=$archived_html_path" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$timestamp" >> "$GITHUB_OUTPUT"
+
+      - name: Upload rendered HTML archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: yaddag-html-${{ steps.render.outputs.timestamp }}
+          path: |
+            ${{ steps.render.outputs.html_path }}
+            ${{ steps.render.outputs.archived_html_path }}
+          if-no-files-found: error
